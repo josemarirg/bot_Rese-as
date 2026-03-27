@@ -26,7 +26,6 @@ def run_web():
 # 2. CONFIGURACIÓN DE TOKENS Y API (SEGURO)
 # ==========================================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-# Convertimos el ID a texto y le quitamos cualquier espacio en blanco invisible
 ADMIN_ID = str(os.environ.get("ADMIN_ID", "")).strip() 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
 
@@ -34,7 +33,7 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 # --- BÚSQUEDA AUTOMÁTICA DEL MODELO ---
-modelo_elegido = "gemini-1.5-flash" # Respaldo por si falla la búsqueda
+modelo_elegido = "gemini-1.5-flash" 
 try:
     modelos_disponibles = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     if modelos_disponibles:
@@ -57,7 +56,6 @@ review_actual = {}
 # 4. FUNCIONES DEL BOT
 # ==========================================
 async def generar_respuesta_ia(texto_resena, estrellas, negocio):
-    """Genera una respuesta profesional usando IA basada en la reseña."""
     prompt = f"""
     Eres el gerente de atención al cliente de un negocio llamado '{negocio}'. 
     Has recibido una reseña de {estrellas} estrellas que dice: '{texto_resena}'.
@@ -75,7 +73,6 @@ async def generar_respuesta_ia(texto_resena, estrellas, negocio):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = str(update.effective_user.id)
     if usuario_id != ADMIN_ID:
-        # El chivato: imprimirá esto en la consola negra de Render si te bloquea
         print(f"⚠️ BLOQUEO en /start -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
         return 
     
@@ -89,7 +86,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = str(update.effective_user.id)
     if usuario_id != ADMIN_ID: 
-        # El chivato para /simular
         print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
         return
     
@@ -112,25 +108,25 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
     
+    texto_resena = review_actual.get('texto', '')
+    estrellas = review_actual.get('estrellas', '')
+    
     if query.data == "generar_ia":
-        # 1. Quitamos el botón de la reseña original para que se quede guardada en el historial
         await query.edit_message_reply_markup(reply_markup=None)
         
-        # 2. Mandamos un mensaje NUEVO avisando de que estamos pensando
         mensaje_carga = await context.bot.send_message(
             chat_id=query.message.chat_id, 
             text="⏳ *Analizando reseña y generando respuesta con IA...*", 
             parse_mode='Markdown'
         )
         
-        # 3. Generamos la respuesta con la IA
-        respuesta_ia = await generar_respuesta_ia(
-            review_actual['texto'], review_actual['estrellas'], review_actual['negocio']
-        )
+        respuesta_ia = await generar_respuesta_ia(texto_resena, estrellas, review_actual['negocio'])
         context.user_data['respuesta_borrador'] = respuesta_ia
         
-        # 4. Editamos nuestro mensaje nuevo con la propuesta final
-        mensaje = f"🤖 *Propuesta de respuesta de la IA:*\n\n{respuesta_ia}"
+        mensaje = (
+            f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
+            f"🤖 *Propuesta de respuesta (IA):*\n{respuesta_ia}"
+        )
         teclado = [
             [InlineKeyboardButton("✅ Publicar", callback_data="publicar")],
             [InlineKeyboardButton("🔄 Regenerar con IA", callback_data="regenerar_ia")],
@@ -140,15 +136,15 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
         return ESPERANDO_ACCION
 
     elif query.data == "regenerar_ia":
-        # Si le damos a regenerar, editamos la propuesta actual
         await query.edit_message_text("⏳ *Generando una respuesta diferente...*", parse_mode='Markdown')
         
-        respuesta_ia = await generar_respuesta_ia(
-            review_actual['texto'], review_actual['estrellas'], review_actual['negocio']
-        )
+        respuesta_ia = await generar_respuesta_ia(texto_resena, estrellas, review_actual['negocio'])
         context.user_data['respuesta_borrador'] = respuesta_ia
         
-        mensaje = f"🤖 *Propuesta de respuesta de la IA:*\n\n{respuesta_ia}"
+        mensaje = (
+            f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
+            f"🤖 *Propuesta de respuesta (IA):*\n{respuesta_ia}"
+        )
         teclado = [
             [InlineKeyboardButton("✅ Publicar", callback_data="publicar")],
             [InlineKeyboardButton("🔄 Regenerar con IA", callback_data="regenerar_ia")],
@@ -159,44 +155,16 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
 
     elif query.data == "publicar":
         respuesta = context.user_data.get('respuesta_borrador', '')
-        mensaje_doble_check = f"⚠️ ¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?\n\n{respuesta}"
-        teclado = [
-            [InlineKeyboardButton("🟢 SÍ, PUBLICAR", callback_data="confirmar_si")],
-            [InlineKeyboardButton("🔴 CANCELAR", callback_data="confirmar_no")]
-        ]
-        await query.edit_message_text(mensaje_doble_check, reply_markup=InlineKeyboardMarkup(teclado))
-        return CONFIRMANDO_PUBLICACION
-
-    elif query.data == "escribir_manual":
-        await query.edit_message_text("✍️ *Escribe a continuación en el chat la respuesta que quieres publicar:*", parse_mode='Markdown')
-        return ESPERANDO_TEXTO_MANUAL    query = update.callback_query
-    await query.answer()
-    
-    if query.data in ["generar_ia", "regenerar_ia"]:
-        await query.edit_message_text("⏳ *Analizando reseña y generando respuesta con IA...*", parse_mode='Markdown')
-        
-        respuesta_ia = await generar_respuesta_ia(
-            review_actual['texto'], review_actual['estrellas'], review_actual['negocio']
+        mensaje_doble_check = (
+            f"⚠️ *¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?*\n\n"
+            f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
+            f"💬 *Respuesta a publicar:*\n{respuesta}"
         )
-        context.user_data['respuesta_borrador'] = respuesta_ia
-        
-        mensaje = f"🤖 *Propuesta de respuesta de la IA:*\n\n{respuesta_ia}"
-        teclado = [
-            [InlineKeyboardButton("✅ Publicar", callback_data="publicar")],
-            [InlineKeyboardButton("🔄 Regenerar con IA", callback_data="regenerar_ia")],
-            [InlineKeyboardButton("✍️ Escribir Manualmente", callback_data="escribir_manual")]
-        ]
-        await query.edit_message_text(mensaje, reply_markup=InlineKeyboardMarkup(teclado), parse_mode='Markdown')
-        return ESPERANDO_ACCION
-
-    elif query.data == "publicar":
-        respuesta = context.user_data.get('respuesta_borrador', '')
-        mensaje_doble_check = f"⚠️ ¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?\n\n{respuesta}"
         teclado = [
             [InlineKeyboardButton("🟢 SÍ, PUBLICAR", callback_data="confirmar_si")],
             [InlineKeyboardButton("🔴 CANCELAR", callback_data="confirmar_no")]
         ]
-        await query.edit_message_text(mensaje_doble_check, reply_markup=InlineKeyboardMarkup(teclado))
+        await query.edit_message_text(mensaje_doble_check, reply_markup=InlineKeyboardMarkup(teclado), parse_mode='Markdown')
         return CONFIRMANDO_PUBLICACION
 
     elif query.data == "escribir_manual":
@@ -207,12 +175,19 @@ async def recibir_texto_manual(update: Update, context: ContextTypes.DEFAULT_TYP
     respuesta_manual = update.message.text
     context.user_data['respuesta_borrador'] = respuesta_manual
     
-    mensaje_doble_check = f"⚠️ ¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?\n\n{respuesta_manual}"
+    texto_resena = review_actual.get('texto', '')
+    estrellas = review_actual.get('estrellas', '')
+    
+    mensaje_doble_check = (
+        f"⚠️ *¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?*\n\n"
+        f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
+        f"💬 *Respuesta a publicar:*\n{respuesta_manual}"
+    )
     teclado = [
         [InlineKeyboardButton("🟢 SÍ, PUBLICAR", callback_data="confirmar_si")],
         [InlineKeyboardButton("🔴 CANCELAR", callback_data="confirmar_no")]
     ]
-    await update.message.reply_text(mensaje_doble_check, reply_markup=InlineKeyboardMarkup(teclado))
+    await update.message.reply_text(mensaje_doble_check, reply_markup=InlineKeyboardMarkup(teclado), parse_mode='Markdown')
     return CONFIRMANDO_PUBLICACION
 
 async def confirmacion_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -221,21 +196,17 @@ async def confirmacion_final(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     if query.data == "confirmar_si":
         respuesta_final = context.user_data.get('respuesta_borrador', '')
-        
-        # Rescatamos los datos de la reseña original de la memoria
         texto_resena = review_actual.get('texto', '')
         estrellas = review_actual.get('estrellas', '')
         
-        # Montamos un mensaje final que incluye todo
         mensaje_exito = (
             f"✅ *¡RESPUESTA PUBLICADA CON ÉXITO!*\n\n"
-            f"⭐️ *Reseña del cliente ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
+            f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
             f"💬 *Tu respuesta publicada:*\n{respuesta_final}"
         )
-        
         await query.edit_message_text(mensaje_exito, parse_mode='Markdown')
     else:
-        await query.edit_message_text("❌ *Publicación cancelada.* Usa /simular para empezar de nuevo con otra reseña.", parse_mode='Markdown')
+        await query.edit_message_text("❌ *Publicación cancelada.* Usa /simular para empezar de nuevo.", parse_mode='Markdown')
     
     return ConversationHandler.END
 
@@ -244,7 +215,7 @@ async def confirmacion_final(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ==========================================
 def main():
     if not TELEGRAM_TOKEN:
-        print("❌ ERROR: Faltan las variables de entorno en Render (TELEGRAM_TOKEN).")
+        print("❌ ERROR: Faltan las variables de entorno.")
         return
 
     threading.Thread(target=run_web, daemon=True).start()
@@ -252,9 +223,7 @@ def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
     conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("simular", simular_resena),
-        ],
+        entry_points=[CommandHandler("simular", simular_resena)],
         states={
             ESPERANDO_ACCION: [CallbackQueryHandler(manejar_botones_accion)],
             ESPERANDO_TEXTO_MANUAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_texto_manual)],
@@ -266,7 +235,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(conv_handler)
 
-    print("🚀 Servidor y Bot de Morcones y Cubatas en marcha...")
+    print("🚀 Servidor y Bot en marcha...")
     app.run_polling()
 
 if __name__ == '__main__':
