@@ -17,7 +17,7 @@ app_web = Flask(__name__)
 
 @app_web.route('/')
 def home():
-    return "✅ Bot de Reseñas de Morcones y Cubatas funcionando 24/7"
+    return "✅ Bot de Reseñas funcionando 24/7"
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
@@ -72,23 +72,28 @@ async def generar_respuesta_ia(texto_resena, estrellas, negocio):
         return f"Error en la IA: {error_limpio}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear() # ✅ LIMPIEZA: Borra cualquier estado bloqueado
+    
     usuario_id = str(update.effective_user.id)
     if usuario_id != ADMIN_ID:
         print(f"⚠️ BLOQUEO en /start -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
-        return
+        return ConversationHandler.END # ✅ Cierra posibles bucles
 
     await update.message.reply_text(
-        "🤖 *Bot de Morcones y Cubatas Iniciado.* \n\n"
+        "🤖 *Bot de Gestión de Reseñas Iniciado.* \n\n"
         "Cuando la API de Google esté lista, las reseñas llegarán automáticamente aquí.\n"
         "Por ahora, usa /simular para probar todo el sistema de respuestas.",
         parse_mode='Markdown'
     )
+    return ConversationHandler.END
 
 async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear() # ✅ LIMPIEZA: Cada simulación nueva empieza de cero al 100%
+    
     usuario_id = str(update.effective_user.id)
     if usuario_id != ADMIN_ID:
         print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
-        return
+        return ConversationHandler.END
 
     # Mensaje de carga mientras la IA genera la reseña
     msg_carga = await update.message.reply_text("⏳ *Generando reseña de prueba...*", parse_mode='Markdown')
@@ -141,7 +146,6 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
         respuesta_ia = await generar_respuesta_ia(texto_resena, estrellas, review_actual['negocio'])
         context.user_data['respuesta_borrador'] = respuesta_ia
 
-        # ✅ Solo la propuesta, sin repetir la reseña
         mensaje = f"🤖 *Propuesta de respuesta (IA):*\n\n{respuesta_ia}"
 
         teclado = [
@@ -158,7 +162,6 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
         respuesta_ia = await generar_respuesta_ia(texto_resena, estrellas, review_actual['negocio'])
         context.user_data['respuesta_borrador'] = respuesta_ia
 
-        # ✅ Solo la propuesta, sin repetir la reseña
         mensaje = f"🤖 *Propuesta de respuesta (IA):*\n\n{respuesta_ia}"
 
         teclado = [
@@ -245,7 +248,8 @@ def main():
             ESPERANDO_TEXTO_MANUAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_texto_manual)],
             CONFIRMANDO_PUBLICACION: [CallbackQueryHandler(confirmacion_final)]
         },
-        fallbacks=[CommandHandler("start", start)]
+        fallbacks=[CommandHandler("start", start)],
+        allow_reentry=True # ✅ CLAVE MAGICA: Permite forzar el inicio de una nueva simulación en cualquier momento
     )
 
     app.add_handler(CommandHandler("start", start))
