@@ -88,7 +88,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear() # ✅ LIMPIEZA: Cada simulación nueva empieza de cero al 100%
+    context.user_data.clear() # Limpieza total
+    
+    usuario_id = str(update.effective_user.id)
+    if usuario_id != ADMIN_ID:
+        print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
+        return ConversationHandler.END
+
+    # VOLVEMOS A LA RESEÑA FIJA: Cero cuelgues, cero retrasos.
+    review_actual['negocio'] = "Casa Sobotta"
+    review_actual['estrellas'] = 5
+    review_actual['texto'] = "Sitio de 10. Fuimos el día de la inauguración y la verdad no pudimos estar mas acertados , un 10 tanto al servicio como a la comida, todo espectacular 👌"
+    
+    mensaje = (
+        f"🔔 *NUEVA RESEÑA EN \"{review_actual['negocio'].upper()}\" - {review_actual['estrellas']} ESTRELLAS*\n\n"
+        f"🗣 *Cliente dice:* \"{review_actual['texto']}\""
+    )
+    
+    teclado = [[InlineKeyboardButton("✨ Generar Respuesta con IA", callback_data="generar_ia")]]
+    reply_markup = InlineKeyboardMarkup(teclado)
+    
+    await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=reply_markup)
+    return ESPERANDO_ACCION    context.user_data.clear() # ✅ LIMPIEZA: Cada simulación nueva empieza de cero al 100%
     
     usuario_id = str(update.effective_user.id)
     if usuario_id != ADMIN_ID:
