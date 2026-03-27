@@ -1,11 +1,12 @@
 import os
+import json
 import logging
 import threading
 from flask import Flask
 import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler, 
+    Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ContextTypes, ConversationHandler
 )
 
@@ -26,14 +27,14 @@ def run_web():
 # 2. CONFIGURACIÓN DE TOKENS Y API (SEGURO)
 # ==========================================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-ADMIN_ID = str(os.environ.get("ADMIN_ID", "")).strip() 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
+ADMIN_ID = str(os.environ.get("ADMIN_ID", "")).strip()
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 # --- BÚSQUEDA AUTOMÁTICA DEL MODELO ---
-modelo_elegido = "gemini-1.5-flash" 
+modelo_elegido = "gemini-1.5-flash"
 try:
     modelos_disponibles = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     if modelos_disponibles:
@@ -50,7 +51,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 # 3. ESTADOS Y VARIABLES GLOBALES
 # ==========================================
 ESPERANDO_ACCION, ESPERANDO_TEXTO_MANUAL, CONFIRMANDO_PUBLICACION = range(3)
-review_actual = {} 
+review_actual = {}
 
 # ==========================================
 # 4. FUNCIONES DEL BOT
@@ -74,8 +75,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = str(update.effective_user.id)
     if usuario_id != ADMIN_ID:
         print(f"⚠️ BLOQUEO en /start -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
-        return 
-    
+        return
+
     await update.message.reply_text(
         "🤖 *Bot de Morcones y Cubatas Iniciado.* \n\n"
         "Cuando la API de Google esté lista, las reseñas llegarán automáticamente aquí.\n"
@@ -85,7 +86,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = str(update.effective_user.id)
-    if usuario_id != ADMIN_ID: 
+    if usuario_id != ADMIN_ID:
         print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
         return
 
@@ -98,16 +99,15 @@ async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
     El texto debe sonar natural, como lo escribiría un cliente real. Sin asteriscos ni comillas dentro del texto.
     Varía el tipo de reseña: a veces positiva, a veces negativa, a veces mixta.
     """
-    
+
     try:
         response = await model.generate_content_async(prompt)
-        import json
         datos = json.loads(response.text.strip())
         review_actual['negocio'] = "Casa Sobotta"
         review_actual['estrellas'] = datos['estrellas']
         review_actual['texto'] = datos['texto']
     except Exception as e:
-        # Fallback si la IA falla
+        # Fallback si la IA falla o devuelve JSON malformado
         review_actual['negocio'] = "Casa Sobotta"
         review_actual['estrellas'] = 3
         review_actual['texto'] = f"(Error generando reseña: {e})"
@@ -116,50 +116,32 @@ async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔔 *NUEVA RESEÑA EN \"{review_actual['negocio'].upper()}\" - {review_actual['estrellas']} ESTRELLAS*\n\n"
         f"🗣 *Cliente dice:* \"{review_actual['texto']}\""
     )
-    
+
     teclado = [[InlineKeyboardButton("✨ Generar Respuesta con IA", callback_data="generar_ia")]]
     reply_markup = InlineKeyboardMarkup(teclado)
-    
-    await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=reply_markup)
-    return ESPERANDO_ACCION    usuario_id = str(update.effective_user.id)
-    if usuario_id != ADMIN_ID: 
-        print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
-        return
-    
-    review_actual['negocio'] = "Casa Sobotta"
-    review_actual['estrellas'] = 5
-    review_actual['texto'] = "Sitio de 10. Fuimos el día de la inauguración y la verdad no pudimos estar mas acertados , un 10 tanto al servicio como a la comida, todo espectacular 👌"
-    
-    mensaje = (
-        f"🔔 *NUEVA RESEÑA EN \"{review_actual['negocio'].upper()}\" - {review_actual['estrellas']} ESTRELLAS*\n\n"
-        f"🗣 *Cliente dice:* \"{review_actual['texto']}\""
-    )
-    
-    teclado = [[InlineKeyboardButton("✨ Generar Respuesta con IA", callback_data="generar_ia")]]
-    reply_markup = InlineKeyboardMarkup(teclado)
-    
+
     await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=reply_markup)
     return ESPERANDO_ACCION
 
 async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+
     texto_resena = review_actual.get('texto', '')
     estrellas = review_actual.get('estrellas', '')
-    
+
     if query.data == "generar_ia":
         await query.edit_message_reply_markup(reply_markup=None)
-        
+
         mensaje_carga = await context.bot.send_message(
-            chat_id=query.message.chat_id, 
-            text="⏳ *Analizando reseña y generando respuesta con IA...*", 
+            chat_id=query.message.chat_id,
+            text="⏳ *Analizando reseña y generando respuesta con IA...*",
             parse_mode='Markdown'
         )
-        
+
         respuesta_ia = await generar_respuesta_ia(texto_resena, estrellas, review_actual['negocio'])
         context.user_data['respuesta_borrador'] = respuesta_ia
-        
+
         mensaje = (
             f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
             f"🤖 *Propuesta de respuesta (IA):*\n{respuesta_ia}"
@@ -174,10 +156,10 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
 
     elif query.data == "regenerar_ia":
         await query.edit_message_text("⏳ *Generando una respuesta diferente...*", parse_mode='Markdown')
-        
+
         respuesta_ia = await generar_respuesta_ia(texto_resena, estrellas, review_actual['negocio'])
         context.user_data['respuesta_borrador'] = respuesta_ia
-        
+
         mensaje = (
             f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
             f"🤖 *Propuesta de respuesta (IA):*\n{respuesta_ia}"
@@ -211,10 +193,10 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
 async def recibir_texto_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
     respuesta_manual = update.message.text
     context.user_data['respuesta_borrador'] = respuesta_manual
-    
+
     texto_resena = review_actual.get('texto', '')
     estrellas = review_actual.get('estrellas', '')
-    
+
     mensaje_doble_check = (
         f"⚠️ *¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?*\n\n"
         f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
@@ -230,12 +212,12 @@ async def recibir_texto_manual(update: Update, context: ContextTypes.DEFAULT_TYP
 async def confirmacion_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+
     if query.data == "confirmar_si":
         respuesta_final = context.user_data.get('respuesta_borrador', '')
         texto_resena = review_actual.get('texto', '')
         estrellas = review_actual.get('estrellas', '')
-        
+
         mensaje_exito = (
             f"✅ *¡RESPUESTA PUBLICADA CON ÉXITO!*\n\n"
             f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
@@ -244,7 +226,7 @@ async def confirmacion_final(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_text(mensaje_exito, parse_mode='Markdown')
     else:
         await query.edit_message_text("❌ *Publicación cancelada.* Usa /simular para empezar de nuevo.", parse_mode='Markdown')
-    
+
     return ConversationHandler.END
 
 # ==========================================
@@ -256,9 +238,9 @@ def main():
         return
 
     threading.Thread(target=run_web, daemon=True).start()
-    
+
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("simular", simular_resena)],
         states={
