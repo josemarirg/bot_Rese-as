@@ -25,24 +25,21 @@ def run_web():
 # ==========================================
 # 2. CONFIGURACIÓN DE TOKENS Y API (SEGURO)
 # ==========================================
-# Las claves se leen de las Variables de Entorno de Render, tu código está limpio.
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
 
-# Configuración de Gemini (IA Gratuita y Profesional)
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Configuración de los logs para ver errores en la consola de Render
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # ==========================================
 # 3. ESTADOS Y VARIABLES GLOBALES
 # ==========================================
 ESPERANDO_ACCION, ESPERANDO_TEXTO_MANUAL, CONFIRMANDO_PUBLICACION = range(3)
-review_actual = {} # Almacena la reseña que estamos gestionando
+review_actual = {} 
 
 # ==========================================
 # 4. FUNCIONES DEL BOT
@@ -53,18 +50,21 @@ async def generar_respuesta_ia(texto_resena, estrellas, negocio):
     Eres el gerente de atención al cliente de un negocio llamado '{negocio}'. 
     Has recibido una reseña de {estrellas} estrellas que dice: '{texto_resena}'.
     Escribe una respuesta profesional, agradecida (si es positiva) o resolutiva y empática (si es negativa). 
-    Sé breve, natural y directo. No uses comillas al principio ni al final.
+    Sé breve, natural y directo. Estrictamente prohibido usar asteriscos, guiones bajos o comillas.
     """
     try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
+        # Usamos generate_content_async para que Telegram no se quede cargando
+        response = await model.generate_content_async(prompt)
+        # Limpiamos los símbolos que bloquean Telegram
+        texto_limpio = response.text.strip().replace('*', '').replace('_', '').replace('`', '')
+        return texto_limpio
     except Exception as e:
-        return f"Error al generar IA: Revise su API Key de Gemini en Render. Detalle: {e}"
+        error_limpio = str(e).replace('*', '').replace('_', '')
+        return f"Error en la IA: {error_limpio}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /start para iniciar el bot."""
     if update.effective_user.id != ADMIN_ID:
-        return # Seguridad: Ignora a cualquiera que no seas tú
+        return 
     
     await update.message.reply_text(
         "🤖 *Bot de Morcones y Cubatas Iniciado.* \n\n"
@@ -74,10 +74,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Simula la llegada de una reseña (Para probar el flujo)."""
     if update.effective_user.id != ADMIN_ID: return
     
-    # Datos simulados de "Morcones y Cubatas"
     review_actual['negocio'] = "Morcones y Cubatas"
     review_actual['estrellas'] = 5
     review_actual['texto'] = "Los mejores morcones que he probado en mucho tiempo y los cubatas bien cargados. Ambiente de 10."
@@ -94,7 +92,6 @@ async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ESPERANDO_ACCION
 
 async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja los clics en los botones de generar, regenerar o escribir."""
     query = update.callback_query
     await query.answer()
     
@@ -117,12 +114,13 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
 
     elif query.data == "publicar":
         respuesta = context.user_data.get('respuesta_borrador', '')
-        mensaje_doble_check = f"⚠️ *¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?*\n\n_{respuesta}_"
+        # Quitamos el Markdown aquí para que no falle si la IA manda algún símbolo raro colado
+        mensaje_doble_check = f"⚠️ ¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?\n\n{respuesta}"
         teclado = [
             [InlineKeyboardButton("🟢 SÍ, PUBLICAR", callback_data="confirmar_si")],
             [InlineKeyboardButton("🔴 CANCELAR", callback_data="confirmar_no")]
         ]
-        await query.edit_message_text(mensaje_doble_check, reply_markup=InlineKeyboardMarkup(teclado), parse_mode='Markdown')
+        await query.edit_message_text(mensaje_doble_check, reply_markup=InlineKeyboardMarkup(teclado))
         return CONFIRMANDO_PUBLICACION
 
     elif query.data == "escribir_manual":
@@ -130,29 +128,24 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
         return ESPERANDO_TEXTO_MANUAL
 
 async def recibir_texto_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Captura el texto si decides escribir la respuesta a mano."""
     respuesta_manual = update.message.text
     context.user_data['respuesta_borrador'] = respuesta_manual
     
-    mensaje_doble_check = f"⚠️ *¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?*\n\n_{respuesta_manual}_"
+    mensaje_doble_check = f"⚠️ ¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?\n\n{respuesta_manual}"
     teclado = [
         [InlineKeyboardButton("🟢 SÍ, PUBLICAR", callback_data="confirmar_si")],
         [InlineKeyboardButton("🔴 CANCELAR", callback_data="confirmar_no")]
     ]
-    await update.message.reply_text(mensaje_doble_check, reply_markup=InlineKeyboardMarkup(teclado), parse_mode='Markdown')
+    await update.message.reply_text(mensaje_doble_check, reply_markup=InlineKeyboardMarkup(teclado))
     return CONFIRMANDO_PUBLICACION
 
 async def confirmacion_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """El doble check de seguridad antes de mandar a Google."""
     query = update.callback_query
     await query.answer()
     
     if query.data == "confirmar_si":
         respuesta_final = context.user_data.get('respuesta_borrador', '')
-        # ==========================================
-        # AQUÍ IRÁ EL CÓDIGO DE LA API DE GOOGLE CUANDO LA TENGAS
-        # ==========================================
-        await query.edit_message_text(f"✅ *¡RESPUESTA PUBLICADA CON ÉXITO!*\n\nTexto simulado como publicado: _{respuesta_final}_", parse_mode='Markdown')
+        await query.edit_message_text(f"✅ *¡RESPUESTA PUBLICADA CON ÉXITO!*\n\nTexto simulado como publicado:\n{respuesta_final}", parse_mode='Markdown')
     else:
         await query.edit_message_text("❌ *Publicación cancelada.* Usa /simular para empezar de nuevo con otra reseña.", parse_mode='Markdown')
     
@@ -162,15 +155,12 @@ async def confirmacion_final(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # 5. ARRANQUE DEL SISTEMA
 # ==========================================
 def main():
-    # Evita que el bot intente arrancar si faltan las variables en Render
     if not TELEGRAM_TOKEN:
         print("❌ ERROR: Faltan las variables de entorno en Render (TELEGRAM_TOKEN).")
         return
 
-    # 1. Arrancar el servidor web en segundo plano
     threading.Thread(target=run_web, daemon=True).start()
     
-    # 2. Arrancar el bot de Telegram
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
     conv_handler = ConversationHandler(
