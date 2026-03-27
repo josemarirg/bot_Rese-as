@@ -90,7 +90,9 @@ async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
         return
 
-    # --- GENERACIÓN ALEATORIA DE RESEÑA CON IA ---
+    # Mensaje de carga mientras la IA genera la reseña
+    msg_carga = await update.message.reply_text("⏳ *Generando reseña de prueba...*", parse_mode='Markdown')
+
     prompt = """
     Invéntate una reseña realista de Google Maps para un bar-restaurante llamado "Casa Sobotta".
     Debes devolver ÚNICAMENTE un JSON con este formato exacto, sin texto extra ni backticks:
@@ -107,7 +109,6 @@ async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
         review_actual['estrellas'] = datos['estrellas']
         review_actual['texto'] = datos['texto']
     except Exception as e:
-        # Fallback si la IA falla o devuelve JSON malformado
         review_actual['negocio'] = "Casa Sobotta"
         review_actual['estrellas'] = 3
         review_actual['texto'] = f"(Error generando reseña: {e})"
@@ -118,9 +119,7 @@ async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     teclado = [[InlineKeyboardButton("✨ Generar Respuesta con IA", callback_data="generar_ia")]]
-    reply_markup = InlineKeyboardMarkup(teclado)
-
-    await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=reply_markup)
+    await msg_carga.edit_text(mensaje, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(teclado))
     return ESPERANDO_ACCION
 
 async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,10 +141,9 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
         respuesta_ia = await generar_respuesta_ia(texto_resena, estrellas, review_actual['negocio'])
         context.user_data['respuesta_borrador'] = respuesta_ia
 
-        mensaje = (
-            f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
-            f"🤖 *Propuesta de respuesta (IA):*\n{respuesta_ia}"
-        )
+        # ✅ Solo la propuesta, sin repetir la reseña
+        mensaje = f"🤖 *Propuesta de respuesta (IA):*\n\n{respuesta_ia}"
+
         teclado = [
             [InlineKeyboardButton("✅ Publicar", callback_data="publicar")],
             [InlineKeyboardButton("🔄 Regenerar con IA", callback_data="regenerar_ia")],
@@ -160,10 +158,9 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
         respuesta_ia = await generar_respuesta_ia(texto_resena, estrellas, review_actual['negocio'])
         context.user_data['respuesta_borrador'] = respuesta_ia
 
-        mensaje = (
-            f"⭐️ *Reseña ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
-            f"🤖 *Propuesta de respuesta (IA):*\n{respuesta_ia}"
-        )
+        # ✅ Solo la propuesta, sin repetir la reseña
+        mensaje = f"🤖 *Propuesta de respuesta (IA):*\n\n{respuesta_ia}"
+
         teclado = [
             [InlineKeyboardButton("✅ Publicar", callback_data="publicar")],
             [InlineKeyboardButton("🔄 Regenerar con IA", callback_data="regenerar_ia")],
