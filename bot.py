@@ -89,9 +89,9 @@ async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
         return
     
-    review_actual['negocio'] = "Morcones y Cubatas"
+    review_actual['negocio'] = "Casa Sobotta"
     review_actual['estrellas'] = 5
-    review_actual['texto'] = "Los mejores morcones que he probado en mucho tiempo y los cubatas bien cargados. Ambiente de 10."
+    review_actual['texto'] = "Sitio de 10. Fuimos el día de la inauguración y la verdad no pudimos estar mas acertados , un 10 tanto al servicio como a la comida, todo espectacular 👌"
     
     mensaje = (
         f"🔔 *NUEVA RESEÑA EN \"{review_actual['negocio'].upper()}\" - {review_actual['estrellas']} ESTRELLAS*\n\n"
