@@ -88,14 +88,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear() # Limpieza total
+    context.user_data.clear() # Limpieza total para que no se congele
     
     usuario_id = str(update.effective_user.id)
     if usuario_id != ADMIN_ID:
         print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
         return ConversationHandler.END
 
-    # VOLVEMOS A LA RESEÑA FIJA: Cero cuelgues, cero retrasos.
+    # VOLVEMOS A LA RESEÑA FIJA: Cero cuelgues, cero retrasos, peticiones limpias.
     review_actual['negocio'] = "Casa Sobotta"
     review_actual['estrellas'] = 5
     review_actual['texto'] = "Sitio de 10. Fuimos el día de la inauguración y la verdad no pudimos estar mas acertados , un 10 tanto al servicio como a la comida, todo espectacular 👌"
@@ -109,43 +109,6 @@ async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(teclado)
     
     await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=reply_markup)
-    return ESPERANDO_ACCION    context.user_data.clear() # ✅ LIMPIEZA: Cada simulación nueva empieza de cero al 100%
-    
-    usuario_id = str(update.effective_user.id)
-    if usuario_id != ADMIN_ID:
-        print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
-        return ConversationHandler.END
-
-    # Mensaje de carga mientras la IA genera la reseña
-    msg_carga = await update.message.reply_text("⏳ *Generando reseña de prueba...*", parse_mode='Markdown')
-
-    prompt = """
-    Invéntate una reseña realista de Google Maps para un bar-restaurante llamado "Casa Sobotta".
-    Debes devolver ÚNICAMENTE un JSON con este formato exacto, sin texto extra ni backticks:
-    {"estrellas": 4, "texto": "El texto de la reseña aquí"}
-    Las estrellas deben ser un número entero del 1 al 5.
-    El texto debe sonar natural, como lo escribiría un cliente real. Sin asteriscos ni comillas dentro del texto.
-    Varía el tipo de reseña: a veces positiva, a veces negativa, a veces mixta.
-    """
-
-    try:
-        response = await model.generate_content_async(prompt)
-        datos = json.loads(response.text.strip())
-        review_actual['negocio'] = "Casa Sobotta"
-        review_actual['estrellas'] = datos['estrellas']
-        review_actual['texto'] = datos['texto']
-    except Exception as e:
-        review_actual['negocio'] = "Casa Sobotta"
-        review_actual['estrellas'] = 3
-        review_actual['texto'] = f"(Error generando reseña: {e})"
-
-    mensaje = (
-        f"🔔 *NUEVA RESEÑA EN \"{review_actual['negocio'].upper()}\" - {review_actual['estrellas']} ESTRELLAS*\n\n"
-        f"🗣 *Cliente dice:* \"{review_actual['texto']}\""
-    )
-
-    teclado = [[InlineKeyboardButton("✨ Generar Respuesta con IA", callback_data="generar_ia")]]
-    await msg_carga.edit_text(mensaje, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(teclado))
     return ESPERANDO_ACCION
 
 async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_TYPE):
