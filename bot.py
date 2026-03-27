@@ -112,6 +112,66 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
     
+    if query.data == "generar_ia":
+        # 1. Quitamos el botón de la reseña original para que se quede guardada en el historial
+        await query.edit_message_reply_markup(reply_markup=None)
+        
+        # 2. Mandamos un mensaje NUEVO avisando de que estamos pensando
+        mensaje_carga = await context.bot.send_message(
+            chat_id=query.message.chat_id, 
+            text="⏳ *Analizando reseña y generando respuesta con IA...*", 
+            parse_mode='Markdown'
+        )
+        
+        # 3. Generamos la respuesta con la IA
+        respuesta_ia = await generar_respuesta_ia(
+            review_actual['texto'], review_actual['estrellas'], review_actual['negocio']
+        )
+        context.user_data['respuesta_borrador'] = respuesta_ia
+        
+        # 4. Editamos nuestro mensaje nuevo con la propuesta final
+        mensaje = f"🤖 *Propuesta de respuesta de la IA:*\n\n{respuesta_ia}"
+        teclado = [
+            [InlineKeyboardButton("✅ Publicar", callback_data="publicar")],
+            [InlineKeyboardButton("🔄 Regenerar con IA", callback_data="regenerar_ia")],
+            [InlineKeyboardButton("✍️ Escribir Manualmente", callback_data="escribir_manual")]
+        ]
+        await mensaje_carga.edit_text(mensaje, reply_markup=InlineKeyboardMarkup(teclado), parse_mode='Markdown')
+        return ESPERANDO_ACCION
+
+    elif query.data == "regenerar_ia":
+        # Si le damos a regenerar, editamos la propuesta actual
+        await query.edit_message_text("⏳ *Generando una respuesta diferente...*", parse_mode='Markdown')
+        
+        respuesta_ia = await generar_respuesta_ia(
+            review_actual['texto'], review_actual['estrellas'], review_actual['negocio']
+        )
+        context.user_data['respuesta_borrador'] = respuesta_ia
+        
+        mensaje = f"🤖 *Propuesta de respuesta de la IA:*\n\n{respuesta_ia}"
+        teclado = [
+            [InlineKeyboardButton("✅ Publicar", callback_data="publicar")],
+            [InlineKeyboardButton("🔄 Regenerar con IA", callback_data="regenerar_ia")],
+            [InlineKeyboardButton("✍️ Escribir Manualmente", callback_data="escribir_manual")]
+        ]
+        await query.edit_message_text(mensaje, reply_markup=InlineKeyboardMarkup(teclado), parse_mode='Markdown')
+        return ESPERANDO_ACCION
+
+    elif query.data == "publicar":
+        respuesta = context.user_data.get('respuesta_borrador', '')
+        mensaje_doble_check = f"⚠️ ¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?\n\n{respuesta}"
+        teclado = [
+            [InlineKeyboardButton("🟢 SÍ, PUBLICAR", callback_data="confirmar_si")],
+            [InlineKeyboardButton("🔴 CANCELAR", callback_data="confirmar_no")]
+        ]
+        await query.edit_message_text(mensaje_doble_check, reply_markup=InlineKeyboardMarkup(teclado))
+        return CONFIRMANDO_PUBLICACION
+
+    elif query.data == "escribir_manual":
+        await query.edit_message_text("✍️ *Escribe a continuación en el chat la respuesta que quieres publicar:*", parse_mode='Markdown')
+        return ESPERANDO_TEXTO_MANUAL    query = update.callback_query
+    await query.answer()
+    
     if query.data in ["generar_ia", "regenerar_ia"]:
         await query.edit_message_text("⏳ *Analizando reseña y generando respuesta con IA...*", parse_mode='Markdown')
         
@@ -161,7 +221,19 @@ async def confirmacion_final(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     if query.data == "confirmar_si":
         respuesta_final = context.user_data.get('respuesta_borrador', '')
-        await query.edit_message_text(f"✅ *¡RESPUESTA PUBLICADA CON ÉXITO!*\n\nTexto simulado como publicado:\n{respuesta_final}", parse_mode='Markdown')
+        
+        # Rescatamos los datos de la reseña original de la memoria
+        texto_resena = review_actual.get('texto', '')
+        estrellas = review_actual.get('estrellas', '')
+        
+        # Montamos un mensaje final que incluye todo
+        mensaje_exito = (
+            f"✅ *¡RESPUESTA PUBLICADA CON ÉXITO!*\n\n"
+            f"⭐️ *Reseña del cliente ({estrellas} estrellas):*\n_{texto_resena}_\n\n"
+            f"💬 *Tu respuesta publicada:*\n{respuesta_final}"
+        )
+        
+        await query.edit_message_text(mensaje_exito, parse_mode='Markdown')
     else:
         await query.edit_message_text("❌ *Publicación cancelada.* Usa /simular para empezar de nuevo con otra reseña.", parse_mode='Markdown')
     
