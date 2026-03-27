@@ -88,6 +88,43 @@ async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if usuario_id != ADMIN_ID: 
         print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
         return
+
+    # --- GENERACIÓN ALEATORIA DE RESEÑA CON IA ---
+    prompt = """
+    Invéntate una reseña realista de Google Maps para un bar-restaurante llamado "Casa Sobotta".
+    Debes devolver ÚNICAMENTE un JSON con este formato exacto, sin texto extra ni backticks:
+    {"estrellas": 4, "texto": "El texto de la reseña aquí"}
+    Las estrellas deben ser un número entero del 1 al 5.
+    El texto debe sonar natural, como lo escribiría un cliente real. Sin asteriscos ni comillas dentro del texto.
+    Varía el tipo de reseña: a veces positiva, a veces negativa, a veces mixta.
+    """
+    
+    try:
+        response = await model.generate_content_async(prompt)
+        import json
+        datos = json.loads(response.text.strip())
+        review_actual['negocio'] = "Casa Sobotta"
+        review_actual['estrellas'] = datos['estrellas']
+        review_actual['texto'] = datos['texto']
+    except Exception as e:
+        # Fallback si la IA falla
+        review_actual['negocio'] = "Casa Sobotta"
+        review_actual['estrellas'] = 3
+        review_actual['texto'] = f"(Error generando reseña: {e})"
+
+    mensaje = (
+        f"🔔 *NUEVA RESEÑA EN \"{review_actual['negocio'].upper()}\" - {review_actual['estrellas']} ESTRELLAS*\n\n"
+        f"🗣 *Cliente dice:* \"{review_actual['texto']}\""
+    )
+    
+    teclado = [[InlineKeyboardButton("✨ Generar Respuesta con IA", callback_data="generar_ia")]]
+    reply_markup = InlineKeyboardMarkup(teclado)
+    
+    await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=reply_markup)
+    return ESPERANDO_ACCION    usuario_id = str(update.effective_user.id)
+    if usuario_id != ADMIN_ID: 
+        print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
+        return
     
     review_actual['negocio'] = "Casa Sobotta"
     review_actual['estrellas'] = 5
