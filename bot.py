@@ -26,7 +26,8 @@ def run_web():
 # 2. CONFIGURACIÓN DE TOKENS Y API (SEGURO)
 # ==========================================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
+# Convertimos el ID a texto y le quitamos cualquier espacio en blanco invisible
+ADMIN_ID = str(os.environ.get("ADMIN_ID", "")).strip() 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
 
 if GEMINI_API_KEY:
@@ -35,12 +36,9 @@ if GEMINI_API_KEY:
 # --- BÚSQUEDA AUTOMÁTICA DEL MODELO ---
 modelo_elegido = "gemini-1.5-flash" # Respaldo por si falla la búsqueda
 try:
-    # Le pedimos a Google la lista exacta de modelos a los que tu API Key tiene acceso
     modelos_disponibles = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     if modelos_disponibles:
-        # Buscamos el modelo más rápido ("flash"), si no, cogemos el primero que nos dé
         modelo_elegido = next((m for m in modelos_disponibles if "flash" in m), modelos_disponibles[0])
-        # Limpiamos el texto por si Google nos lo manda con la etiqueta 'models/' delante
         modelo_elegido = modelo_elegido.replace("models/", "")
 except Exception as e:
     print(f"Aviso al buscar modelos: {e}")
@@ -67,9 +65,7 @@ async def generar_respuesta_ia(texto_resena, estrellas, negocio):
     Sé breve, natural y directo. Estrictamente prohibido usar asteriscos, guiones bajos o comillas.
     """
     try:
-        # Usamos generate_content_async para que Telegram no se quede cargando
         response = await model.generate_content_async(prompt)
-        # Limpiamos los símbolos que bloquean Telegram
         texto_limpio = response.text.strip().replace('*', '').replace('_', '').replace('`', '')
         return texto_limpio
     except Exception as e:
@@ -77,7 +73,10 @@ async def generar_respuesta_ia(texto_resena, estrellas, negocio):
         return f"Error en la IA: {error_limpio}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
+    usuario_id = str(update.effective_user.id)
+    if usuario_id != ADMIN_ID:
+        # El chivato: imprimirá esto en la consola negra de Render si te bloquea
+        print(f"⚠️ BLOQUEO en /start -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
         return 
     
     await update.message.reply_text(
@@ -88,7 +87,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def simular_resena(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return
+    usuario_id = str(update.effective_user.id)
+    if usuario_id != ADMIN_ID: 
+        # El chivato para /simular
+        print(f"⚠️ BLOQUEO en /simular -> Entrante: '{usuario_id}' | Esperado de Render: '{ADMIN_ID}'")
+        return
     
     review_actual['negocio'] = "Morcones y Cubatas"
     review_actual['estrellas'] = 5
@@ -128,7 +131,6 @@ async def manejar_botones_accion(update: Update, context: ContextTypes.DEFAULT_T
 
     elif query.data == "publicar":
         respuesta = context.user_data.get('respuesta_borrador', '')
-        # Quitamos el Markdown aquí para que no falle si la IA manda algún símbolo raro colado
         mensaje_doble_check = f"⚠️ ¿ESTÁS SEGURO DE QUE QUIERES PUBLICAR ESTA RESPUESTA?\n\n{respuesta}"
         teclado = [
             [InlineKeyboardButton("🟢 SÍ, PUBLICAR", callback_data="confirmar_si")],
