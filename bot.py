@@ -31,7 +31,21 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-pro')
+
+# --- BÚSQUEDA AUTOMÁTICA DEL MODELO ---
+modelo_elegido = "gemini-1.5-flash" # Respaldo por si falla la búsqueda
+try:
+    # Le pedimos a Google la lista exacta de modelos a los que tu API Key tiene acceso
+    modelos_disponibles = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    if modelos_disponibles:
+        # Buscamos el modelo más rápido ("flash"), si no, cogemos el primero que nos dé
+        modelo_elegido = next((m for m in modelos_disponibles if "flash" in m), modelos_disponibles[0])
+        # Limpiamos el texto por si Google nos lo manda con la etiqueta 'models/' delante
+        modelo_elegido = modelo_elegido.replace("models/", "")
+except Exception as e:
+    print(f"Aviso al buscar modelos: {e}")
+
+model = genai.GenerativeModel(modelo_elegido)
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
